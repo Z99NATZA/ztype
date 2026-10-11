@@ -42,7 +42,7 @@ export default function Library({ sets, onSave, onDelete, onPractice }: Props) {
 function Modal({ label, onClose, children }: { label: string; onClose: () => void; children: React.ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { dialog.current?.showModal(); }, []);
-  return <dialog ref={dialog} className="modal" aria-label={label} onCancel={(event) => { event.preventDefault(); onClose(); }} onClick={(event) => { if (event.target === event.currentTarget) { const box = event.currentTarget.getBoundingClientRect(); if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) onClose(); } }}><button className="modal-close icon-button" aria-label="ปิด" onClick={onClose}><X size={20} /></button>{children}</dialog>;
+  return <dialog ref={dialog} className="modal" aria-label={label} onCancel={(event) => { event.preventDefault(); onClose(); }}><button className="modal-close icon-button" aria-label="ปิด" onClick={onClose}><X size={20} /></button>{children}</dialog>;
 }
 
 function SetEditor({ set, onClose, onSave }: { set?: TextSet; onClose: () => void; onSave: (draft: SetDraft, id?: string) => Promise<void> }) {

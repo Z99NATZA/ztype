@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Settings, TextSet, TestResult } from '../shared/types';
-import { buildTarget, completedLock, graphemes, makeResult, protectInput, scoreResult, wordBoundaries } from './typing';
+import { buildTarget, completedLock, countCompleted, graphemes, protectInput, scoreResult, wordBoundaries, wordCompletionEnds } from './typing';
+import { emptyEntry, updateEntry } from './entry';
 
 export function useTyping(set: TextSet, settings: Settings) {
   const [target, setTarget] = useState(() => buildTarget(set, settings));
   const targetRef = useRef(target);
-  const [typed, setTyped] = useState('');
+  const [entry, setEntry] = useState(emptyEntry);
+  const entryRef = useRef(entry);
+  const typed = entry.text;
   const typedRef = useRef('');
   const lockedUntil = useRef(0);
   const boundaries = useMemo(() => wordBoundaries(set, target), [set.kind, target]);
   const expectedPoints = useMemo(() => Array.from(target.normalize('NFC')), [target]);
+  const expected = useMemo(() => graphemes(target), [target]);
+  const wordEnds = useMemo(() => settings.mode === 'words' ? wordCompletionEnds(set, target) : [], [set.kind, target, settings.mode]);
+  const correctRef = useRef(0);
   const [status, setStatus] = useState<'ready' | 'running' | 'done'>('ready');
   const doneRef = useRef(false);
   const started = useRef<number | null>(null);
@@ -22,7 +28,7 @@ export function useTyping(set: TextSet, settings: Settings) {
     doneRef.current = true;
     setElapsed(seconds);
     setStatus('done');
-    setResult(makeResult(targetRef.current, typedRef.current, seconds, counters.current.total, counters.current.mistakes));
+    setResult(scoreResult(correctRef.current, entryRef.current.characters.length - correctRef.current, seconds, counters.current.total, counters.current.mistakes));
   }, []);
 
   useEffect(() => {
@@ -48,19 +54,19 @@ export function useTyping(set: TextSet, settings: Settings) {
       started.current = performance.now();
       setStatus('running');
     }
-    const previous = Array.from(typedRef.current);
-    const next = Array.from(normalized);
-    let prefix = 0;
-    while (prefix < previous.length && prefix < next.length && previous[prefix] === next[prefix]) prefix++;
-    const expected = expectedPoints;
-    for (let index = prefix; index < next.length; index++) {
+    const previous = entryRef.current;
+    const next = updateEntry(previous, normalized);
+    for (let index = next.changedPointFrom; index < next.points.length; index++) {
       counters.current.total++;
-      if (next[index] !== expected[index]) counters.current.mistakes++;
+      if (next.points[index] !== expectedPoints[index]) counters.current.mistakes++;
     }
+    for (let index = next.changedFrom; index < previous.characters.length; index++) correctRef.current -= Number(previous.characters[index] === expected[index]);
+    for (let index = next.changedFrom; index < next.characters.length; index++) correctRef.current += Number(next.characters[index] === expected[index]);
+    entryRef.current = next;
     typedRef.current = normalized;
     lockedUntil.current = completedLock(boundaries, targetRef.current, normalized, lockedUntil.current);
-    setTyped(normalized);
-    if (next.length >= expected.length) {
+    setEntry(next);
+    if (next.points.length >= expectedPoints.length) {
       if (settings.mode !== 'time') finish((performance.now() - started.current!) / 1000);
       else {
         const extended = `${targetRef.current} ${buildTarget(set, settings)}`;
@@ -71,12 +77,11 @@ export function useTyping(set: TextSet, settings: Settings) {
     return normalized;
   };
 
-  const expected = useMemo(() => graphemes(target), [target]);
-  const entered = useMemo(() => graphemes(typed), [typed]);
-  const correct = useMemo(() => entered.reduce((count, character, index) => count + Number(character === expected[index]), 0), [expected, entered]);
+  const entered = entry.characters;
+  const correct = correctRef.current;
   const last = entered.length - 1;
   const partial = last >= 0 && expected[last] !== entered[last] && expected[last]?.startsWith(entered[last]);
   const cursor = entered.length - Number(partial);
   const live = scoreResult(correct, entered.length - correct, elapsed, counters.current.total, counters.current.mistakes);
-  return { target, typed, expected, entered, cursor, status, elapsed, result, live, lockedUntil: lockedUntil.current, commit };
+  return { target, typed, expected, entered, cursor, status, elapsed, result, live, completed: countCompleted(wordEnds, typed.length), lockedUntil: lockedUntil.current, lockedCursor: countCompleted(entry.offsets, lockedUntil.current) - 1, commit };
 }

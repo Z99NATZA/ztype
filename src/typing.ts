@@ -29,11 +29,37 @@ export function wordBoundaries(set: TextSet, target: string): WordBoundary[] {
 
 export function completedLock(boundaries: WordBoundary[], target: string, typed: string, previousLock: number): number {
   let lock = previousLock;
-  for (const boundary of boundaries) {
+  let low = 0;
+  let high = boundaries.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (boundaries[middle].end <= previousLock) low = middle + 1;
+    else high = middle;
+  }
+  for (let index = low; index < boundaries.length; index++) {
+    const boundary = boundaries[index];
     if (boundary.end > typed.length) break;
     if (boundary.end > previousLock && typed.slice(boundary.start, boundary.end) === target.slice(boundary.start, boundary.end)) lock = boundary.end;
   }
   return lock;
+}
+
+export function wordCompletionEnds(set: TextSet, target: string): number[] {
+  if (set.kind === 'words') return [...Array.from(target.matchAll(/ /g), (match) => match.index + 1), target.length];
+  return Array.from(wordSegmenter.segment(target)).filter((part) =>
+    part.isWordLike || (!/\s/u.test(part.segment) && /\p{Extended_Pictographic}|\p{S}/u.test(part.segment)),
+  ).map((part) => part.index + part.segment.length);
+}
+
+export function countCompleted(ends: number[], length: number): number {
+  let low = 0;
+  let high = ends.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (ends[middle] <= length) low = middle + 1;
+    else high = middle;
+  }
+  return low;
 }
 
 /** Clamp backward deletion; reject replacements of an already committed prefix. */

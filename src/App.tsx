@@ -22,7 +22,6 @@ export default function App() {
   const [round, setRound] = useState(0);
   const [custom, setCustom] = useState('');
   const [customOpen, setCustomOpen] = useState(false);
-  const [notice, setNotice] = useState('');
   const selected = sets.find((set) => set.id === savedSettings.setId) ?? sets[0];
   const settings: Settings = savedSettings.mode === 'original' && selected?.kind === 'words'
     ? { ...savedSettings, mode: 'time', amount: 30 } : savedSettings;
@@ -35,17 +34,14 @@ export default function App() {
   };
   useEffect(() => { void reload(); }, []);
   useEffect(() => { try { localStorage.setItem('softtype.settings', JSON.stringify(settings)); } catch { /* Preferences are optional. */ } }, [settings]);
-  useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 2600); return () => clearTimeout(timer); }, [notice]);
 
   const save = async (draft: SetDraft, id?: string) => {
     const saved = id ? await api.update(id, draft) : await api.create(draft);
     setSets((current) => id ? current.map((set) => set.id === id ? saved : set) : [...current, saved]);
-    setNotice('บันทึกแล้ว');
   };
   const remove = async (id: string) => {
     await api.delete(id);
     setSets((current) => current.filter((set) => set.id !== id));
-    setNotice('ลบชุดแล้ว');
   };
   const switchMode = (mode: TestMode) => { setSettings({ ...settings, mode, amount: mode === 'time' ? 30 : 25 }); setCustomOpen(false); };
 
@@ -77,6 +73,5 @@ export default function App() {
       </>}
     </main>
     <footer className="site-footer"><span>WPM = 5 ตัวอักษรต่อคำ</span></footer>
-    {notice && <div className="toast" role="status">{notice}</div>}
   </div>;
 }
