@@ -3,18 +3,20 @@ import { expect, test } from '@playwright/test';
 let passageId: string;
 let wordsId: string;
 let thaiId: string;
+let originalId: string;
 const unique = `e2e-${Date.now()}`;
 test.beforeAll(async ({ request }) => {
-  for (const [name, kind, content] of [[`${unique}-passage`, 'passage', 'one two three four five six seven eight nine ten'], [`${unique}-words`, 'words', 'alpha beta gamma'], [`${unique}-thai`, 'passage', 'ที่ ดี มี ใจ']] as const) {
+  for (const [name, kind, content] of [[`${unique}-passage`, 'passage', 'one two three four five six seven eight nine ten'], [`${unique}-words`, 'words', 'alpha beta gamma'], [`${unique}-thai`, 'passage', 'ที่ ดี มี ใจ'], [`${unique}-original`, 'passage', 'one  two\n\nthree\tfour.']] as const) {
     const response = await request.post('/api/sets', { data: { name, kind, content } });
     expect(response.ok()).toBeTruthy();
     const { id } = await response.json();
     if (kind === 'words') wordsId = id;
     else if (name.endsWith('thai')) thaiId = id;
+    else if (name.endsWith('original')) originalId = id;
     else passageId = id;
   }
 });
-test.afterAll(async ({ request }) => { for (const id of [passageId, wordsId, thaiId]) if (id) await request.delete(`/api/sets/${id}`); });
+test.afterAll(async ({ request }) => { for (const id of [passageId, wordsId, thaiId, originalId]) if (id) await request.delete(`/api/sets/${id}`); });
 
 test('named sets can be created, edited, selected, and deleted', async ({ page, request }) => {
   let id: string | undefined;
@@ -114,6 +116,101 @@ test('long sessions scroll to the caret and prevent pasted input', async ({ page
   }).toBe(true);
   await page.getByLabel('พื้นที่ฝึกพิมพ์').press('Escape');
   await expect(page.getByLabel('พื้นที่ฝึกพิมพ์')).toHaveValue('');
+});
+
+test('Enter activates typing once and the start button stays hidden after blur', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Enter');
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('');
+  await expect(page.locator('.focus-prompt')).toHaveCount(0);
+  await input.pressSequentially('one ');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await expect(input).not.toBeFocused();
+  await expect(page.locator('.focus-prompt')).toHaveCount(0);
+  await page.keyboard.press('Enter');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('one ');
+});
+
+test('correct completed words resist Backspace, word deletion and mobile-style deletion', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+  await page.getByRole('button', { name: 'คลิกเพื่อเริ่มพิมพ์' }).click();
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await input.pressSequentially('one ');
+  await input.press('Backspace');
+  await expect(input).toHaveValue('one ');
+  await input.pressSequentially('tw');
+  await input.press('Control+Backspace');
+  await expect(input).toHaveValue('one ');
+  await input.press('Control+Backspace');
+  await expect(input).toHaveValue('one ');
+  await input.fill('');
+  await expect(input).toHaveValue('one ');
+  await input.pressSequentially('twy');
+  await input.press('Backspace');
+  await input.pressSequentially('o ');
+  await expect(input).toHaveValue('one two ');
+  await input.press('Backspace');
+  await expect(input).toHaveValue('one two ');
+  await input.press('Escape');
+  await expect(input).toHaveValue('');
+});
+
+test('incorrect completed words remain editable until corrected', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+  await page.getByRole('button', { name: 'คลิกเพื่อเริ่มพิมพ์' }).click();
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await input.pressSequentially('oxe ');
+  await input.press('Control+Backspace');
+  await input.press('Control+Backspace');
+  await expect(input).toHaveValue('');
+  await input.pressSequentially('one ');
+  await input.press('Backspace');
+  await expect(input).toHaveValue('one ');
+});
+
+test('original mode has no limits, preserves whitespace and completes only at the end', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/');
+  await page.getByLabel('เลือกชุดข้อความ').selectOption(originalId);
+  await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'กำหนดเอง', exact: true })).toHaveCount(0);
+  await expect(page.locator('.typing-text')).toHaveText('one  two\n\nthree\tfour.', { useInnerText: false });
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'ต้นฉบับ', exact: true })).toHaveClass(/active/);
+  await page.getByRole('button', { name: 'คลิกเพื่อเริ่มพิมพ์' }).click();
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await input.pressSequentially('one  two');
+  await page.clock.fastForward(3601000);
+  await expect(page.getByRole('region', { name: 'ผลการฝึก' })).toHaveCount(0);
+  await expect(input).toHaveValue('one  two');
+  await input.press('Enter');
+  await input.press('Enter');
+  await input.pressSequentially('three');
+  await input.press('Tab');
+  await input.pressSequentially('four.');
+  await expect(page.getByRole('region', { name: 'ผลการฝึก' })).toBeVisible();
+  await expect(page.getByText('พิมพ์ผิด 0 ครั้ง', { exact: false })).toBeVisible();
+});
+
+test('original mode is only available for passages and caret respects reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+  await page.getByLabel('เลือกชุดข้อความ').selectOption(wordsId);
+  await expect(page.getByRole('button', { name: 'ต้นฉบับ', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'เวลา', exact: true })).toHaveClass(/active/);
+  await page.getByRole('button', { name: 'คลิกเพื่อเริ่มพิมพ์' }).click();
+  await expect(page.locator('.smooth-caret')).toHaveCSS('transition-duration', '0s');
 });
 
 test('desktop and mobile have no overflow or runtime errors', async ({ page }) => {

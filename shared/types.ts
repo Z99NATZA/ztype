@@ -8,7 +8,7 @@ export interface TextSet {
   updatedAt: string;
 }
 export interface SetDraft { name: string; kind: SetKind; content: string }
-export type TestMode = 'time' | 'words';
+export type TestMode = 'time' | 'words' | 'original';
 export interface Settings { setId: string; mode: TestMode; amount: number }
 export interface TestResult {
   wpm: number;

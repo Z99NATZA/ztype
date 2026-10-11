@@ -1,12 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Settings, TextSet, TestResult } from '../shared/types';
-import { buildTarget, graphemes, makeResult } from './typing';
+import { buildTarget, completedLock, graphemes, makeResult, protectInput, scoreResult, wordBoundaries } from './typing';
 
 export function useTyping(set: TextSet, settings: Settings) {
   const [target, setTarget] = useState(() => buildTarget(set, settings));
   const targetRef = useRef(target);
   const [typed, setTyped] = useState('');
   const typedRef = useRef('');
+  const lockedUntil = useRef(0);
+  const boundaries = useMemo(() => wordBoundaries(set, target), [set.kind, target]);
+  const expectedPoints = useMemo(() => Array.from(target.normalize('NFC')), [target]);
   const [status, setStatus] = useState<'ready' | 'running' | 'done'>('ready');
   const doneRef = useRef(false);
   const started = useRef<number | null>(null);
@@ -34,13 +37,13 @@ export function useTyping(set: TextSet, settings: Settings) {
   }, [status, settings.mode, settings.amount, finish]);
 
   const commit = (value: string) => {
-    if (doneRef.current) return;
+    if (doneRef.current) return typedRef.current;
     if (started.current !== null && settings.mode === 'time' && (performance.now() - started.current) / 1000 >= settings.amount) {
       finish(settings.amount);
-      return;
+      return typedRef.current;
     }
-    const normalized = value.normalize('NFC');
-    if (normalized === typedRef.current) return;
+    const normalized = protectInput(typedRef.current, value.normalize('NFC'), lockedUntil.current);
+    if (normalized === typedRef.current) return normalized;
     if (started.current === null && normalized.length) {
       started.current = performance.now();
       setStatus('running');
@@ -49,28 +52,31 @@ export function useTyping(set: TextSet, settings: Settings) {
     const next = Array.from(normalized);
     let prefix = 0;
     while (prefix < previous.length && prefix < next.length && previous[prefix] === next[prefix]) prefix++;
-    const expected = Array.from(targetRef.current.normalize('NFC'));
+    const expected = expectedPoints;
     for (let index = prefix; index < next.length; index++) {
       counters.current.total++;
       if (next[index] !== expected[index]) counters.current.mistakes++;
     }
     typedRef.current = normalized;
+    lockedUntil.current = completedLock(boundaries, targetRef.current, normalized, lockedUntil.current);
     setTyped(normalized);
     if (next.length >= expected.length) {
-      if (settings.mode === 'words') finish((performance.now() - started.current!) / 1000);
+      if (settings.mode !== 'time') finish((performance.now() - started.current!) / 1000);
       else {
         const extended = `${targetRef.current} ${buildTarget(set, settings)}`;
         targetRef.current = extended;
         setTarget(extended);
       }
     }
+    return normalized;
   };
 
-  const expected = graphemes(target);
-  const entered = graphemes(typed);
+  const expected = useMemo(() => graphemes(target), [target]);
+  const entered = useMemo(() => graphemes(typed), [typed]);
+  const correct = useMemo(() => entered.reduce((count, character, index) => count + Number(character === expected[index]), 0), [expected, entered]);
   const last = entered.length - 1;
   const partial = last >= 0 && expected[last] !== entered[last] && expected[last]?.startsWith(entered[last]);
   const cursor = entered.length - Number(partial);
-  const live = makeResult(target, typed, elapsed, counters.current.total, counters.current.mistakes);
-  return { target, typed, expected, entered, cursor, status, elapsed, result, live, commit };
+  const live = scoreResult(correct, entered.length - correct, elapsed, counters.current.total, counters.current.mistakes);
+  return { target, typed, expected, entered, cursor, status, elapsed, result, live, lockedUntil: lockedUntil.current, commit };
 }

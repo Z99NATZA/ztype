@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bankWords, buildTarget, completedWords, graphemes, makeResult, wordCount } from '../src/typing';
+import { bankWords, buildTarget, completedLock, completedWords, graphemes, makeResult, protectInput, wordBoundaries, wordCount } from '../src/typing';
 import type { TextSet } from '../shared/types';
 
 const set = (content: string, kind: 'passage' | 'words' = 'passage'): TextSet => ({
@@ -31,6 +31,44 @@ describe('practice targets', () => {
   it('does not let incorrect spaces skip word progress', () => {
     expect(completedWords(set('alpha beta gamma', 'words'), 'alpha beta gamma', '     ')).toBe(0);
     expect(completedWords(set('alpha beta gamma', 'words'), 'alpha beta gamma', 'alpha ')).toBe(1);
+  });
+  it('keeps the original passage exactly once, with spacing and line breaks', () => {
+    expect(buildTarget(set('one  two\r\n\r\nthree\tfour.'), { setId: 'test', mode: 'original', amount: 100 })).toBe('one  two\n\nthree\tfour.');
+  });
+});
+
+describe('committed words', () => {
+  it('locks correct words with punctuation after their separator', () => {
+    const target = 'one, two three';
+    const boundaries = wordBoundaries(set(target), target);
+    expect(completedLock(boundaries, target, 'one,', 0)).toBe(0);
+    expect(completedLock(boundaries, target, 'one, ', 0)).toBe(5);
+    expect(protectInput('one, tw', 'one, ', 5)).toBe('one, ');
+    expect(protectInput('one, ', 'one,', 5)).toBe('one, ');
+  });
+  it('allows correction of incorrect words before committing them', () => {
+    const target = 'one two three';
+    const boundaries = wordBoundaries(set(target), target);
+    expect(completedLock(boundaries, target, 'oxe ', 0)).toBe(0);
+    expect(protectInput('oxe ', 'ox', 0)).toBe('ox');
+    expect(completedLock(boundaries, target, 'one ', 0)).toBe(4);
+  });
+  it('clamps whole-word deletion and rejects replacement of a locked prefix', () => {
+    expect(protectInput('one tw', '', 4)).toBe('one ');
+    expect(protectInput('one tw', 'oxe tw', 4)).toBe('one tw');
+  });
+  it('locks Thai words without a space and preserves combining marks', () => {
+    const target = 'วันนี้อากาศดี';
+    const boundaries = wordBoundaries(set(target), target);
+    const lock = completedLock(boundaries, target, 'วันนี้', 0);
+    expect(lock).toBe('วันนี้'.length);
+    expect(protectInput('วันนี้', 'วันนี', lock)).toBe('วันนี้');
+  });
+  it('treats word-bank entries as whole words and locks paragraph breaks', () => {
+    const bank = 'ความสุข ดี';
+    expect(completedLock(wordBoundaries(set(bank, 'words'), bank), bank, 'ความสุข ', 0)).toBe('ความสุข '.length);
+    const passage = 'one\n\ntwo';
+    expect(completedLock(wordBoundaries(set(passage), passage), passage, 'one\n\n', 0)).toBe(5);
   });
 });
 

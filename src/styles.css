@@ -63,15 +63,17 @@ h1 { font-size: 30px; line-height: 1.5; font-weight: 500; letter-spacing: -.6px;
 .progress-track { margin-top: 20px; height: 2px; background: #e9ebe1; }
 .progress-track > div { height: 100%; background: #94a389; transition: width .1s linear; }
 .typing-area { position: relative; padding: 40px 0 27px; min-height: 255px; cursor: text; }
-.text-viewport { max-height: 185px; overflow-y: auto; scrollbar-width: none; scroll-behavior: smooth; transition: opacity .2s; }
+.text-viewport { position: relative; max-height: 185px; overflow-y: auto; scrollbar-width: none; transition: opacity .2s; }
 .text-viewport::-webkit-scrollbar { display: none; }
 .text-viewport.unfocused { opacity: .32; }
-.typing-text { font-family: "Noto Sans Thai", "Leelawadee UI", "Tahoma", ui-monospace, monospace; font-size: 25px; line-height: 1.95; color: #92998b; white-space: pre-wrap; overflow-wrap: anywhere; font-variant-ligatures: none; user-select: none; }
+.typing-text { font-family: "Noto Sans Thai", "Leelawadee UI", "Tahoma", ui-monospace, monospace; font-size: 25px; line-height: 1.95; color: #92998b; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; font-variant-ligatures: none; user-select: none; }
 .character { position: relative; }
 .character.correct { color: #485540; }
 .character.incorrect { color: #af6a5c; background: #f4e6df; border-radius: 2px; text-decoration: underline; text-decoration-color: #c69488; text-underline-offset: 5px; }
-.character.caret::before { content: ""; position: absolute; left: -1px; top: 1px; width: 2px; height: 1.15em; background: #839674; border-radius: 2px; animation: caret-blink 1s step-end infinite; }
-.is-running .character.caret::before { animation: none; }
+.character.newline::after { content: "↵"; position: absolute; left: 0; color: #a2a99a; font-size: .65em; }
+.smooth-caret { position: absolute; left: 0; top: 0; width: 2px; background: #839674; border-radius: 2px; opacity: 0; pointer-events: none; transition: transform 85ms ease-out; will-change: transform; }
+.smooth-caret.visible { opacity: 1; animation: caret-blink 1s step-end infinite; }
+.is-running .smooth-caret { animation: none; }
 @keyframes caret-blink { 50% { opacity: 0; } }
 .typing-input { position: absolute; left: 0; top: 38px; width: 1px; height: 30px; opacity: 0; padding: 0; resize: none; pointer-events: none; overflow: hidden; }
 .focus-prompt { position: absolute; top: 47%; left: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; gap: 11px; padding: 12px 18px; color: #637257; font-size: 14px; background: #f0f2e9; border: 1px solid #dee4d5; border-radius: 9px; white-space: nowrap; cursor: pointer; }
