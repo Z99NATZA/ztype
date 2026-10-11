@@ -1,64 +1,42 @@
 # softtype
 
-เว็บฝึกพิมพ์ด้วยชุดข้อความและคลังคำของคุณ ใช้ React, TypeScript, Tailwind CSS และ Express เก็บข้อมูลเป็น JSON
+## Stack
 
-## เปิด / หยุด
+```text
+Typing practice with saved passages and random word banks. Supports Thai and English.
 
-ต้องมี Docker พร้อม Compose และ Make
-
-```bash
-cd /home/znnn/my_code/softtype
-make run
+Frontend: React / TypeScript / Tailwind CSS
+Backend:  Express / JSON storage
+Build:    Vite / Docker Compose / Make
 ```
 
-เปิด http://localhost:8080
+## Run
 
 ```bash
-make down
+# Requires Docker Compose and Make. Run from the project directory.
+
+make run                          # http://localhost:8080
+make down                         # Stop
+make logs                         # View logs
+
+# Saved sets stay in `data/sets.json` across restarts and rebuilds.
+# Change the port with `PORT=8090 make run` or `.env` using `.env.example`.
 ```
 
-ข้อมูลอยู่ที่ `data/sets.json` บนเครื่อง ไม่ถูกลบเมื่อหยุดหรือสร้าง container ใหม่ ระบบสร้างชุดตัวอย่างเมื่อยังไม่มีไฟล์เท่านั้น สำรองข้อมูลโดยคัดลอกไฟล์นี้หลัง `make down` แล้ววางคืนตำแหน่งเดิมก่อน `make run`
-
-เปลี่ยนพอร์ตด้วย `PORT=8090 make run` หรือคัดลอก `.env.example` เป็น `.env` แล้วแก้ `PORT` พอร์ตเริ่มต้นเปิดเฉพาะเครื่องนี้ เปลี่ยน `HOST=0.0.0.0` เมื่อต้องการเปิดผ่าน LAN; ทุกคนที่เข้าถึงเว็บสามารถแก้ไขชุดข้อความได้
-
-## ใช้งาน
-
-- **ชุดข้อความ → เพิ่มชุด**: ตั้งชื่อ เลือกข้อความหรือคลังคำ แล้วบันทึก แก้ไขและลบได้
-- **ข้อความ**: ฝึกตามลำดับ โหมดเวลาและจำนวนคำรวมการขึ้นบรรทัดและช่องว่างหลายตัวเป็นช่องว่างเดียว
-- **ต้นฉบับ**: ใช้ได้กับชุดข้อความ พิมพ์ครบต้นฉบับหนึ่งรอบโดยไม่จำกัดเวลาหรือจำนวนคำ คงช่องว่างและการขึ้นบรรทัดเดิมไว้ ใช้ Enter ขึ้นบรรทัดและ Tab เมื่อถึงตำแหน่งแท็บ
-- **คลังคำ**: แยกด้วยช่องว่าง จุลภาค หรือขึ้นบรรทัดใหม่ สุ่มแบบเลือกซ้ำได้ในแต่ละรอบ
-- **เวลา**: 15 / 30 / 60 / 120 วินาที หรือกำหนดเอง 1–3,600 วินาที ข้อความต่อเนื่องจนหมดเวลา
-- **จำนวนคำ**: 10 / 25 / 50 / 100 คำ หรือกำหนดเอง 1–1,000 คำ ข้อความสั้นจะวนซ้ำให้ครบจำนวน; ภาษาไทยนับคำด้วย `Intl.Segmenter` ส่วนคลังคำนับแต่ละรายการเป็นหนึ่งคำ
-- เปิดหน้าฝึกแล้วพิมพ์ได้ทันที ไม่มีปุ่มเริ่มหรือข้อความบังพื้นที่ฝึก เริ่มวัดเวลาเมื่อพิมพ์ตัวแรก เมื่ออยู่ที่พื้นที่ว่างหรือปุ่มตัวเลือก พิมพ์ตัวอักษรเพื่อกลับมาพิมพ์ต่อได้โดยไม่ต้องกดผ่านขั้นตอนเริ่ม หรือกด Enter จากพื้นที่ว่างเพื่อกลับมาโฟกัส
-- หลังจบรอบ กด Enter เพื่อฝึกอีกครั้งแล้วพิมพ์ต่อได้ทันที
-- Backspace แก้ไขคำปัจจุบันหรือคำก่อนหน้าที่พิมพ์ผิดได้ คำที่พิมพ์ถูกแล้วและผ่านตำแหน่งเริ่มคำถัดไปจะล็อกไม่ให้ลบย้อนกลับ รวมถึง Ctrl/Option+Backspace และการลบจากคีย์บอร์ดมือถือ Esc เริ่มรอบใหม่ รองรับอักษรไทย เครื่องหมายประกอบ และ IME ไม่อนุญาตวางข้อความในพื้นที่ฝึก
-- ผลแสดง WPM จากอักษรที่ถูกต้อง ณ ตอนจบ (5 กลุ่มอักษรต่อคำ) และความแม่นยำจากการป้อนอักษรทั้งหมด การลบแก้ไขไม่ล้างจำนวนครั้งที่พิมพ์ผิด ตัวเลือกการฝึกจำไว้ใน browser
-
-## พัฒนาและทดสอบ
-
-Node.js 24+
+## Development
 
 ```bash
+# Requires Node.js 24+.
+
 npm ci
-make dev
-```
+make dev                          # Frontend :5173; API :3000
+make test                         # Unit and API tests
+make build                        # Type-check and build
 
-Frontend: http://localhost:5173 · API: http://localhost:3000
-
-```bash
-make test
-make build
+# Browser tests require a running app
 make run
 npx playwright install chromium
 npm run test:e2e
 ```
 
-หากติดตั้ง Chrome ไว้แล้วใช้ `CHROME_PATH=/opt/google/chrome/chrome npm run test:e2e` หรือใช้ `BASE_URL` เพื่อเปลี่ยนที่อยู่เว็บที่ทดสอบ
-
-## โครงสร้าง
-
-`src/` หน้าเว็บและระบบฝึกพิมพ์ · `server/` API และตัวจัดเก็บ JSON · `shared/` types · `tests/` ทดสอบการนับคำ ผลคะแนน การบันทึก และการใช้งานผ่าน browser
-
-API: `GET /api/sets`, `POST /api/sets`, `PUT /api/sets/:id`, `DELETE /api/sets/:id`, `GET /api/health`
-
-JSON ใช้คิวบันทึกและ atomic rename เพื่อป้องกันการเขียนทับกันภายใน process เดียว ให้รัน server เพียง instance เดียวบนไฟล์นี้ ข้อมูลผิดรูปแบบจะทำให้ server หยุดเริ่มงานโดยไม่เขียนทับไฟล์เดิม
+## [Documentation](docs/README.md)
