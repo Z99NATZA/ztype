@@ -1,0 +1,9 @@
+node_modules/
+dist/
+dist-server/
+data/*.json
+data/*.tmp
+.env
+.artifacts/
+test-results/
+playwright-report/
