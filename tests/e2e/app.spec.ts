@@ -314,6 +314,81 @@ test('Enter on results starts a new round ready for immediate typing', async ({ 
   await expect(input).toHaveValue('');
 });
 
+test('next set starts fresh, persists the selection and wraps after the last set', async ({ page }) => {
+  const sets = [
+    { id: 'next-first', name: 'First set', kind: 'passage', content: 'alpha' },
+    { id: 'next-second', name: 'Second set', kind: 'passage', content: 'beta' },
+  ].map((set) => ({ ...set, createdAt: '', updatedAt: '' }));
+  await page.route('**/api/sets', route => route.fulfill({ json: sets }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  const next = page.getByRole('button', { name: 'ชุดต่อไป', exact: true });
+  await expect(next).toHaveCount(0);
+  await input.fill('alpha');
+  await page.setViewportSize({ width: 320, height: 700 });
+  await expect(next).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await next.click();
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('next-second');
+  await expect(page.getByRole('button', { name: 'ต้นฉบับ', exact: true })).toHaveClass(/active/);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('');
+  await expect(page.locator('.typing-text')).toHaveText('beta');
+  await expect(page.locator('.practice-topline')).toContainText('0%');
+  await expect(page.getByRole('region', { name: 'ผลการฝึก' })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('next-second');
+  await input.pressSequentially('beta');
+  await expect(page.getByRole('heading', { name: 'Second set', exact: true })).toBeVisible();
+  await next.click();
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('next-first');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('');
+  await expect(page.locator('.typing-text')).toHaveText('alpha');
+});
+
+test('next set adapts original mode for a word bank and waits for input to start its timer', async ({ page }) => {
+  await page.clock.install();
+  await page.route('**/api/sets', route => route.fulfill({ json: [
+    { id: 'next-passage', name: 'Passage', kind: 'passage', content: 'one', createdAt: '', updatedAt: '' },
+    { id: 'next-bank', name: 'Word bank', kind: 'words', content: 'two', createdAt: '', updatedAt: '' },
+  ] }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await input.fill('one');
+  await page.getByRole('button', { name: 'ชุดต่อไป', exact: true }).click();
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('next-bank');
+  await expect(page.getByRole('button', { name: 'ต้นฉบับ', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'เวลา', exact: true })).toHaveClass(/active/);
+  await expect(page.getByRole('button', { name: '30', exact: true })).toHaveClass(/active/);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('');
+  await page.clock.fastForward(31000);
+  await expect(page.getByRole('region', { name: 'ผลการฝึก' })).toHaveCount(0);
+  await expect(page.locator('.practice-topline')).toContainText('30 วิ');
+  await input.pressSequentially('two ');
+  await page.clock.fastForward(31000);
+  await expect(page.getByRole('heading', { name: 'Word bank', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'ชุดต่อไป', exact: true })).toBeEnabled();
+});
+
+test('a single saved set disables next set and remains available for another round', async ({ page }) => {
+  await page.route('**/api/sets', route => route.fulfill({ json: [
+    { id: 'only-set', name: 'Only set', kind: 'passage', content: 'one', createdAt: '', updatedAt: '' },
+  ] }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await input.fill('one');
+  await expect(page.getByRole('button', { name: 'ชุดต่อไป', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'ฝึกอีกครั้ง' }).click();
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('');
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('only-set');
+});
+
 test('long original passages stay compact and keep the actual animated caret visible', async ({ page }) => {
   const content = 'one two three four five six seven eight nine ten. '.repeat(600).trim();
   await page.route('**/api/sets', route => route.fulfill({ json: [{ id: 'long-test', name: 'Long passage', kind: 'passage', content, createdAt: '', updatedAt: '' }] }));

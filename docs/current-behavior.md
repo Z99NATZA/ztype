@@ -28,6 +28,8 @@ Skipped graphemes count as errors; normal spaces preserve original spacing.
 Enter: space, or newline in original mode.
 Tab:   inserts an expected tab in original mode.
 Enter on results: new round. Esc in the typing area: restart.
+ชุดต่อไป on results: starts the next saved set, wrapping after the last set.
+The next-set button is disabled when only one set is saved.
 Typing from blank page space resumes input; Enter returns focus.
 Dialogs close through buttons or Esc; outside clicks preserve the draft.
 

@@ -23,6 +23,7 @@ export default function App() {
   const [custom, setCustom] = useState('');
   const [customOpen, setCustomOpen] = useState(false);
   const selected = sets.find((set) => set.id === savedSettings.setId) ?? sets[0];
+  const nextSet = sets.length > 1 ? sets[(sets.findIndex((set) => set.id === selected?.id) + 1) % sets.length] : undefined;
   const settings: Settings = savedSettings.mode === 'original' && selected?.kind === 'words'
     ? { ...savedSettings, mode: 'time', amount: 30 } : savedSettings;
 
@@ -44,6 +45,12 @@ export default function App() {
     setSets((current) => current.filter((set) => set.id !== id));
   };
   const switchMode = (mode: TestMode) => { setSettings({ ...settings, mode, amount: mode === 'time' ? 30 : 25 }); setCustomOpen(false); };
+  const practiceNext = () => {
+    if (!nextSet) return;
+    setSettings({ ...settings, setId: nextSet.id });
+    setCustomOpen(false);
+    setRound((value) => value + 1);
+  };
 
   return <div className="app-shell">
     <header className="site-header"><a href="#" className="brand" onClick={(event) => { event.preventDefault(); setPage('practice'); }} aria-label="softtype หน้าฝึกพิมพ์"><span className="brand-mark"><Keyboard size={23} strokeWidth={1.6} /></span><span>softtype<span className="brand-dot">.</span></span></a><nav aria-label="หน้าหลัก"><button className={page === 'practice' ? 'active' : ''} onClick={() => setPage('practice')}><Keyboard size={16} />ฝึกพิมพ์</button><button className={page === 'library' ? 'active' : ''} onClick={() => setPage('library')}><LibraryIcon size={16} />ชุดข้อความ</button></nav></header>
@@ -68,7 +75,7 @@ export default function App() {
           </div>
           {settings.mode !== 'original' && customOpen && <form className="custom-amount" onSubmit={(event) => { event.preventDefault(); const amount = Number(custom); if (Number.isInteger(amount) && amount >= 1 && amount <= (settings.mode === 'time' ? 3600 : 1000)) { setSettings({ ...settings, amount }); setCustomOpen(false); } }}><label htmlFor="custom-amount">{settings.mode === 'time' ? 'เวลา (1–3,600 วิ)' : 'จำนวนคำ (1–1,000)'}</label><input id="custom-amount" type="number" autoFocus min={1} max={settings.mode === 'time' ? 3600 : 1000} step={1} required value={custom} onChange={(event) => setCustom(event.target.value)} /><button className="button-secondary" type="submit">ใช้ค่านี้</button></form>}
           <div className="selected-meta"><span>{selected.kind === 'words' ? 'สุ่มคำจากคลัง' : 'พิมพ์ข้อความตามลำดับ'}</span><span>{settings.mode === 'original' ? 'ต้นฉบับ' : settings.mode === 'time' ? `${settings.amount} วินาที` : `${settings.amount} คำ`}</span></div>
-          <Practice key={`${selected.id}:${selected.updatedAt}:${settings.mode}:${settings.amount}:${round}`} set={selected} settings={settings} onRestart={() => setRound((value) => value + 1)} />
+          <Practice key={`${selected.id}:${selected.updatedAt}:${settings.mode}:${settings.amount}:${round}`} set={selected} settings={settings} onRestart={() => setRound((value) => value + 1)} onNext={nextSet ? practiceNext : undefined} />
         </> : <div className="empty-state"><BookOpen size={28} /><p>เพิ่มชุดข้อความเพื่อเริ่มฝึก</p><button className="button-primary" onClick={() => setPage('library')}><Plus size={16} /> เพิ่มชุด</button></div>}
       </>}
     </main>

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { RotateCcw, Clock3, Hash, BookOpen } from 'lucide-react';
+import { RotateCcw, Clock3, Hash, BookOpen, ArrowRight } from 'lucide-react';
 import type { Settings, TextSet } from '../shared/types';
 import { useTyping } from './useTyping';
 import TypingText from './TypingText';
 
-interface Props { set: TextSet; settings: Settings; onRestart: () => void }
+interface Props { set: TextSet; settings: Settings; onRestart: () => void; onNext?: () => void }
 
-export default function Practice({ set, settings, onRestart }: Props) {
+export default function Practice({ set, settings, onRestart, onNext }: Props) {
   const typing = useTyping(set, settings);
   const input = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
@@ -57,7 +57,10 @@ export default function Practice({ set, settings, onRestart }: Props) {
         <div><span className="stat-label">เวลา</span><strong>{result.seconds}<small> วิ</small></strong></div>
       </div>
       <div className="result-detail"><span>ถูก {result.correct} · คงเหลือผิด {result.incorrect}</span><span>พิมพ์ผิด {result.mistakes} ครั้ง · raw {result.raw} WPM</span></div>
-      <button autoFocus className="button-primary mt-9" onClick={onRestart} onKeyDown={(event) => { if (event.key === 'Enter' && event.repeat) event.preventDefault(); }}><RotateCcw size={16} /> ฝึกอีกครั้ง <kbd>enter</kbd></button>
+      <div className="result-actions">
+        <button autoFocus className="button-primary" onClick={onRestart} onKeyDown={(event) => { if (event.key === 'Enter' && event.repeat) event.preventDefault(); }}><RotateCcw size={16} /> ฝึกอีกครั้ง <kbd>enter</kbd></button>
+        <button className="button-secondary" onClick={onNext} disabled={!onNext} title={!onNext ? 'เพิ่มชุดข้อความอีกชุดเพื่อฝึกชุดต่อไป' : undefined}>ชุดต่อไป <ArrowRight size={16} /></button>
+      </div>
     </section>;
   }
 
