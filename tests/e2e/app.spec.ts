@@ -63,6 +63,69 @@ test('word mode scores corrections and supports restart', async ({ page }) => {
   await expect(page.getByLabel('พื้นที่ฝึกพิมพ์')).toBeFocused();
 });
 
+for (const [content, kind, typed, remainder, skipped] of [
+  ['alpha beta', 'passage', 'al', 'beta', 3],
+  ['ที่', 'words', 'ท', 'ที่', 1],
+  ['👩‍💻', 'words', '', '👩‍💻', 1],
+] as const) {
+  test(`Spacebar skips unfinished ${content} and aligns the next word`, async ({ page }) => {
+    await page.route('**/api/sets', route => route.fulfill({ json: [{ id: 'space-test', name: 'Space test', kind, content, createdAt: '', updatedAt: '' }] }));
+    await page.goto('/');
+    if (kind === 'passage') await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+    else {
+      await page.getByRole('button', { name: 'จำนวนคำ', exact: true }).click();
+      await page.getByRole('button', { name: 'กำหนดเอง', exact: true }).click();
+      await page.getByLabel('จำนวนคำ (1–1,000)').fill('2');
+      await page.getByRole('button', { name: 'ใช้ค่านี้' }).click();
+    }
+    const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+    await input.focus();
+    await input.pressSequentially(typed);
+    await input.press('Space');
+    const first = kind === 'passage' ? content.split(' ')[0] : content;
+    expect((await input.inputValue()).length).toBe(first.length + 1);
+    await expect(page.locator('.character.caret')).toHaveText(kind === 'passage' ? 'b' : remainder);
+    await expect(page.locator('.character.incorrect')).not.toHaveCount(0);
+    await input.pressSequentially(remainder);
+    await expect(page.getByRole('region', { name: 'ผลการฝึก' })).toBeVisible();
+    await expect(page.getByText(`คงเหลือผิด ${skipped}`, { exact: false })).toBeVisible();
+    await expect(page.getByText(`พิมพ์ผิด ${skipped} ครั้ง`, { exact: false })).toBeVisible();
+  });
+}
+
+test('Spacebar advances from outside the input and can finish by skipping the last word', async ({ page }) => {
+  await page.route('**/api/sets', route => route.fulfill({ json: [{ id: 'space-test', name: 'Space test', kind: 'passage', content: 'one two', createdAt: '', updatedAt: '' }] }));
+  await page.goto('/');
+  await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await input.pressSequentially('o');
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await page.keyboard.press('Space');
+  await expect(input).toBeFocused();
+  expect((await input.inputValue()).length).toBe(4);
+  await expect(page.locator('.character.caret')).toHaveText('t');
+  await input.pressSequentially('t');
+  await input.press('Space');
+  await expect(page.getByRole('region', { name: 'ผลการฝึก' })).toBeVisible();
+  await expect(page.getByText('คงเหลือผิด 4', { exact: false })).toBeVisible();
+  await expect(page.getByText('พิมพ์ผิด 4 ครั้ง', { exact: false })).toBeVisible();
+});
+
+test('Spacebar does not advance during IME composition', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('เลือกชุดข้อความ').selectOption(thaiId);
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await input.focus();
+  await input.dispatchEvent('compositionstart');
+  await input.fill('ท');
+  await input.dispatchEvent('keydown', { key: ' ', code: 'Space', isComposing: true });
+  await expect(input).toHaveValue('ท');
+  await input.fill('ที่');
+  await input.dispatchEvent('compositionend');
+  await input.press('Space');
+  await expect(input).toHaveValue('ที่ ');
+});
+
 test('timer starts on first input, extends the text and ends at selected time', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');

@@ -12,9 +12,10 @@ export default function Practice({ set, settings, onRestart }: Props) {
   const composing = useRef(false);
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
-  const actions = useRef({ status: typing.status, draft, accept: (_value: string) => {}, onRestart });
+  const actions = useRef({ status: typing.status, draft, accept: (_value: string) => {}, nextWord: () => {}, onRestart });
   const accept = (value: string) => { setDraft(typing.commit(value)); };
-  actions.current = { status: typing.status, draft, accept, onRestart };
+  const nextWord = () => { setDraft(typing.nextWord()); };
+  actions.current = { status: typing.status, draft, accept, nextWord, onRestart };
 
   useEffect(() => {
     if (document.activeElement === document.body) input.current?.focus();
@@ -31,7 +32,9 @@ export default function Practice({ set, settings, onRestart }: Props) {
         if (element instanceof Element && element.closest('button, a')) return;
         event.preventDefault(); input.current?.focus();
       } else if (event.key.length === 1 && !(element instanceof Element && element.closest('a'))) {
-        event.preventDefault(); input.current?.focus(); actions.current.accept(actions.current.draft + event.key);
+        event.preventDefault(); input.current?.focus();
+        if (event.key === ' ') actions.current.nextWord();
+        else actions.current.accept(actions.current.draft + event.key);
       }
     };
     window.addEventListener('keydown', typeFromPage);
@@ -80,7 +83,8 @@ export default function Practice({ set, settings, onRestart }: Props) {
         onPaste={(event) => event.preventDefault()}
         onDrop={(event) => event.preventDefault()}
         onKeyDown={(event) => {
-          if (event.nativeEvent.isComposing) return;
+          if (composing.current || event.nativeEvent.isComposing) return;
+          if (event.key === ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) { event.preventDefault(); nextWord(); }
           if (event.key === 'Escape') { event.preventDefault(); onRestart(); }
           if (event.key === 'Backspace' && draft.length <= typing.lockedUntil) event.preventDefault();
           if (event.key === 'Enter') { event.preventDefault(); accept(draft + (settings.mode === 'original' ? '\n' : ' ')); }

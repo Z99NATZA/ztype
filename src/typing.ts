@@ -23,8 +23,26 @@ export interface WordBoundary { start: number; end: number }
 export function wordBoundaries(set: TextSet, target: string): WordBoundary[] {
   const starts = set.kind === 'words'
     ? Array.from(target.matchAll(/\S+/gu), (match) => match.index)
-    : Array.from(wordSegmenter.segment(target)).filter((part) => part.isWordLike).map((part) => part.index);
+    : Array.from(wordSegmenter.segment(target)).filter((part) =>
+      part.isWordLike || (!/\s/u.test(part.segment) && /\p{Extended_Pictographic}|\p{S}/u.test(part.segment)),
+    ).map((part) => part.index);
   return starts.map((start, index) => ({ start, end: starts[index + 1] ?? target.length }));
+}
+
+/** Keep skipped graphemes aligned with the target without crediting them as typed. */
+export function advanceWord(boundaries: WordBoundary[], target: string, typed: string): { text: string; skipped: number } {
+  if (/\s/u.test(target[typed.length] ?? '')) return { text: typed + ' ', skipped: 0 };
+  const end = boundaries.find((boundary) => boundary.end > typed.length)?.end ?? target.length;
+  if (end <= typed.length) return { text: typed, skipped: 0 };
+  const separator = target[end - 1] === ' ' ? ' ' : '';
+  const missing = Array.from(graphemeSegmenter.segment(target.slice(0, end - separator.length)))
+    .filter((part) => part.index + part.segment.length > typed.length);
+  // Combining Grapheme Joiners preserve both grapheme count and UTF-16 offsets,
+  // including Thai marks and surrogate pairs, without changing under NFC.
+  const padding = missing.map((part) => part.index < typed.length
+    ? '\u034F'.repeat(part.index + part.segment.length - typed.length)
+    : '\uFFFD' + '\u034F'.repeat(part.segment.length - 1)).join('');
+  return { text: typed + padding + separator, skipped: missing.length };
 }
 
 export function completedLock(boundaries: WordBoundary[], target: string, typed: string, previousLock: number): number {
@@ -100,13 +118,13 @@ export function makeResult(target: string, typed: string, seconds: number, total
   return scoreResult(correct, entered.length - correct, seconds, totalKeystrokes, mistakes);
 }
 
-export function scoreResult(correct: number, incorrect: number, seconds: number, totalKeystrokes: number, mistakes: number): TestResult {
+export function scoreResult(correct: number, incorrect: number, seconds: number, totalKeystrokes: number, mistakes: number, skipped = 0): TestResult {
   const elapsed = Math.max(seconds, 0.1);
   return {
     wpm: Math.round(correct / 5 / (elapsed / 60)),
     raw: Math.round(totalKeystrokes / 5 / (elapsed / 60)),
-    accuracy: totalKeystrokes ? Math.round((totalKeystrokes - mistakes) / totalKeystrokes * 100) : 100,
+    accuracy: totalKeystrokes + skipped ? Math.round((totalKeystrokes - mistakes) / (totalKeystrokes + skipped) * 100) : 100,
     seconds: Math.round(seconds * 10) / 10,
-    correct, incorrect, totalKeystrokes, mistakes,
+    correct, incorrect, totalKeystrokes, mistakes: mistakes + skipped,
   };
 }

@@ -23,6 +23,8 @@ Practice focuses automatically; timing starts on the first character.
 Changing the set, mode, or amount starts a new round.
 Correct completed words and the prefix before them lock; unlocked text stays editable.
 
+Space: advances to the next word even if the current word is unfinished.
+Skipped graphemes count as errors; normal spaces preserve original spacing.
 Enter: space, or newline in original mode.
 Tab:   inserts an expected tab in original mode.
 Enter on results: new round. Esc in the typing area: restart.
@@ -36,7 +38,8 @@ Paste/drop are blocked in practice. Thai combining marks and IME are supported.
 
 ```text
 WPM uses correct grapheme groups, with five groups per word.
-Raw WPM counts all input; accuracy includes mistakes even after correction.
+Raw WPM counts actual input; skipped graphemes do not increase speed.
+Accuracy includes skipped graphemes and mistakes even after correction.
 
 Sets persist on the server; preferences stay in browser localStorage.
 Results are shown for the current round only.

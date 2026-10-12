@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bankWords, buildTarget, completedLock, completedWords, graphemes, makeResult, protectInput, wordBoundaries, wordCount } from '../src/typing';
+import { advanceWord, bankWords, buildTarget, completedLock, completedWords, graphemes, makeResult, protectInput, scoreResult, wordBoundaries, wordCount } from '../src/typing';
 import type { TextSet } from '../shared/types';
 
 const set = (content: string, kind: 'passage' | 'words' = 'passage'): TextSet => ({
@@ -34,6 +34,47 @@ describe('practice targets', () => {
   });
   it('keeps the original passage exactly once, with spacing and line breaks', () => {
     expect(buildTarget(set('one  two\r\n\r\nthree\tfour.'), { setId: 'test', mode: 'original', amount: 100 })).toBe('one  two\n\nthree\tfour.');
+  });
+});
+
+describe('Spacebar word navigation', () => {
+  it.each([
+    ['alpha beta', 'al', 'words'],
+    ['alpha beta', 'ax', 'passage'],
+    ['one, two', 'on', 'passage'],
+    ['ที่ ดี', '', 'words'],
+    ['ที่ ดี', 'ท', 'words'],
+    ['👩‍💻 next', '', 'words'],
+    ['👩‍💻 next', '', 'passage'],
+    ['é next', '', 'words'],
+    ['วันนี้อากาศดี', 'วัน', 'passage'],
+  ] as const)('aligns skipped characters in %s after %s', (target, typed, kind) => {
+    const boundaries = wordBoundaries(set(target, kind), target);
+    const next = advanceWord(boundaries, target, typed);
+    const end = boundaries.find((boundary) => boundary.end > typed.length)!.end;
+    expect(next.text.startsWith(typed)).toBe(true);
+    expect(next.text.length).toBe(end);
+    expect(next.text.normalize('NFC')).toBe(next.text);
+    expect(graphemes(next.text)).toHaveLength(graphemes(target.slice(0, end)).length);
+    expect(next.skipped).toBeGreaterThan(0);
+    expect(next.text).not.toBe(target.slice(0, end));
+  });
+  it('preserves ordinary spaces, including repeated original whitespace', () => {
+    const target = 'one  two';
+    const boundaries = wordBoundaries(set(target), target);
+    expect(advanceWord(boundaries, target, 'one')).toEqual({ text: 'one ', skipped: 0 });
+    expect(advanceWord(boundaries, target, 'one ')).toEqual({ text: 'one  ', skipped: 0 });
+  });
+  it('can skip the last word and stops at the target end', () => {
+    const target = 'one two';
+    const boundaries = wordBoundaries(set(target), target);
+    const next = advanceWord(boundaries, target, 'one t');
+    expect(next.text.length).toBe(target.length);
+    expect(next.skipped).toBe(2);
+    expect(advanceWord(boundaries, target, next.text)).toEqual({ text: next.text, skipped: 0 });
+  });
+  it('penalizes skipped characters without inflating raw speed', () => {
+    expect(scoreResult(6, 3, 60, 6, 0, 3)).toMatchObject({ correct: 6, incorrect: 3, wpm: 1, raw: 1, accuracy: 67, totalKeystrokes: 6, mistakes: 3 });
   });
 });
 
