@@ -21,6 +21,10 @@ Original/word mode finishes at the target length even with typing errors.
 ```text
 Practice focuses automatically; timing starts on the first character.
 Changing the set, mode, or amount starts a new round.
+Automatic focus preserves page scroll when changing practice settings.
+The page keeps a permanent scrollbar gutter so optional controls cannot shift the layout.
+The set picker groups passages and word banks, supports name search and marks the selected set.
+Arrow keys and Enter select a set; Esc or clicking outside closes the picker.
 Correct completed words and the prefix before them lock; unlocked text stays editable.
 
 Space: advances to the next word even if the current word is unfinished.

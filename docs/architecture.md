@@ -11,6 +11,7 @@ During development, Vite proxies /api to port 3000.
 
 ```text
 src/App.tsx, Library.tsx:          navigation, preferences, saved sets.
+src/SetPicker.tsx:                searchable, keyboard-accessible set selection.
 src/Practice.tsx, useTyping.ts:    input, timing, results.
 src/typing.ts, entry.ts:           targets, word locks, scoring, Unicode segmentation.
 src/TypingText.tsx, styles.css:    text, caret, scrolling, layout.

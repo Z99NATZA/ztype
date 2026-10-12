@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Keyboard, Library as LibraryIcon, BookOpen, Shuffle, ChevronDown, Plus, RefreshCw } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Keyboard, Library as LibraryIcon, BookOpen, Plus, RefreshCw } from 'lucide-react';
 import type { Settings, SetDraft, TextSet, TestMode } from '../shared/types';
 import { api } from './api';
 import Practice from './Practice';
 import Library from './Library';
+import SetPicker from './SetPicker';
 
 function loadSettings(): Settings {
   try {
@@ -22,6 +23,7 @@ export default function App() {
   const [round, setRound] = useState(0);
   const [custom, setCustom] = useState('');
   const [customOpen, setCustomOpen] = useState(false);
+  const customInput = useRef<HTMLInputElement>(null);
   const selected = sets.find((set) => set.id === savedSettings.setId) ?? sets[0];
   const nextSet = sets.length > 1 ? sets[(sets.findIndex((set) => set.id === selected?.id) + 1) % sets.length] : undefined;
   const settings: Settings = savedSettings.mode === 'original' && selected?.kind === 'words'
@@ -35,6 +37,9 @@ export default function App() {
   };
   useEffect(() => { void reload(); }, []);
   useEffect(() => { try { localStorage.setItem('softtype.settings', JSON.stringify(settings)); } catch { /* Preferences are optional. */ } }, [settings]);
+  useLayoutEffect(() => {
+    if (customOpen && settings.mode !== 'original') customInput.current?.focus({ preventScroll: true });
+  }, [customOpen, settings.mode]);
 
   const save = async (draft: SetDraft, id?: string) => {
     const saved = id ? await api.update(id, draft) : await api.create(draft);
@@ -59,7 +64,7 @@ export default function App() {
         <div className="section-heading"><h1>ฝึกพิมพ์</h1><button className="quiet-button" onClick={() => setPage('library')}><Plus size={16} /> จัดการชุดข้อความ</button></div>
         {selected ? <>
           <div className="practice-settings">
-            <label className="set-select"><span className="field-caption">ชุดที่ฝึก</span><span className="select-wrapper">{selected.kind === 'words' ? <Shuffle size={17} /> : <BookOpen size={17} />}<select aria-label="เลือกชุดข้อความ" value={selected.id} onChange={(event) => setSettings({ ...settings, setId: event.target.value })}><optgroup label="ข้อความ">{sets.filter((set) => set.kind === 'passage').map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</optgroup><optgroup label="คลังคำสุ่ม">{sets.filter((set) => set.kind === 'words').map((set) => <option key={set.id} value={set.id}>{set.name}</option>)}</optgroup></select><ChevronDown size={15} className="pointer-events-none" /></span></label>
+            <SetPicker sets={sets} selected={selected} onSelect={(set) => setSettings({ ...settings, setId: set.id })} />
             <div className="test-settings">
               <div className="segmented mode-picker">
                 <button className={settings.mode === 'time' ? 'active' : ''} onClick={() => switchMode('time')}>เวลา</button>
@@ -73,7 +78,7 @@ export default function App() {
               </>}
             </div>
           </div>
-          {settings.mode !== 'original' && customOpen && <form className="custom-amount" onSubmit={(event) => { event.preventDefault(); const amount = Number(custom); if (Number.isInteger(amount) && amount >= 1 && amount <= (settings.mode === 'time' ? 3600 : 1000)) { setSettings({ ...settings, amount }); setCustomOpen(false); } }}><label htmlFor="custom-amount">{settings.mode === 'time' ? 'เวลา (1–3,600 วิ)' : 'จำนวนคำ (1–1,000)'}</label><input id="custom-amount" type="number" autoFocus min={1} max={settings.mode === 'time' ? 3600 : 1000} step={1} required value={custom} onChange={(event) => setCustom(event.target.value)} /><button className="button-secondary" type="submit">ใช้ค่านี้</button></form>}
+          {settings.mode !== 'original' && customOpen && <form className="custom-amount" onSubmit={(event) => { event.preventDefault(); const amount = Number(custom); if (Number.isInteger(amount) && amount >= 1 && amount <= (settings.mode === 'time' ? 3600 : 1000)) { setSettings({ ...settings, amount }); setCustomOpen(false); } }}><label htmlFor="custom-amount">{settings.mode === 'time' ? 'เวลา (1–3,600 วิ)' : 'จำนวนคำ (1–1,000)'}</label><input ref={customInput} id="custom-amount" type="number" min={1} max={settings.mode === 'time' ? 3600 : 1000} step={1} required value={custom} onChange={(event) => setCustom(event.target.value)} /><button className="button-secondary" type="submit">ใช้ค่านี้</button></form>}
           <div className="selected-meta"><span>{selected.kind === 'words' ? 'สุ่มคำจากคลัง' : 'พิมพ์ข้อความตามลำดับ'}</span><span>{settings.mode === 'original' ? 'ต้นฉบับ' : settings.mode === 'time' ? `${settings.amount} วินาที` : `${settings.amount} คำ`}</span></div>
           <Practice key={`${selected.id}:${selected.updatedAt}:${settings.mode}:${settings.amount}:${round}`} set={selected} settings={settings} onRestart={() => setRound((value) => value + 1)} onNext={nextSet ? practiceNext : undefined} />
         </> : <div className="empty-state"><BookOpen size={28} /><p>เพิ่มชุดข้อความเพื่อเริ่มฝึก</p><button className="button-primary" onClick={() => setPage('library')}><Plus size={16} /> เพิ่มชุด</button></div>}

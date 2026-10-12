@@ -1,4 +1,10 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+
+async function selectSet(page: Page, name: string) {
+  await page.getByLabel('เลือกชุดข้อความ').click();
+  await page.getByRole('combobox', { name: 'ค้นหาชุดฝึก' }).fill(name);
+  await page.getByRole('option', { name, exact: true }).click();
+}
 
 let passageId: string;
 let wordsId: string;
@@ -17,6 +23,170 @@ test.beforeAll(async ({ request }) => {
   }
 });
 test.afterAll(async ({ request }) => { for (const id of [passageId, wordsId, thaiId, originalId]) if (id) await request.delete(`/api/sets/${id}`); });
+
+const pickerSets = [
+  ['A quiet morning', 'passage', 'one two'],
+  ['วันสบาย ๆ', 'passage', 'ที่ ดี'],
+  ['convention-commit', 'passage', 'hello world'],
+  ['request', 'passage', 'small steps'],
+  ['Everyday words', 'words', 'quiet morning'],
+  ['คำภาษาไทย', 'words', 'วันนี้ พรุ่งนี้'],
+] as const;
+async function mockPicker(page: Page) {
+  await page.route('**/api/sets', route => route.fulfill({ json: pickerSets.map(([name, kind, content], index) => ({
+    id: `picker-${index}`, name, kind, content, createdAt: '', updatedAt: '',
+  })) }));
+  await page.goto('/');
+}
+
+test('set picker groups sets, searches names and remembers the selected set', async ({ page }) => {
+  await mockPicker(page);
+  const trigger = page.getByLabel('เลือกชุดข้อความ');
+  await trigger.click();
+  const search = page.getByRole('combobox', { name: 'ค้นหาชุดฝึก' });
+  await expect(search).toBeFocused();
+  await expect(page.getByRole('group', { name: 'ข้อความ', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'คลังคำสุ่ม', exact: true })).toBeVisible();
+  await expect(page.getByRole('option', { selected: true })).toHaveAccessibleName('A quiet morning');
+  await search.fill('CONVENTION');
+  await expect(page.getByRole('option')).toHaveCount(1);
+  await search.press('Enter');
+  await expect(trigger).toHaveText('convention-commit');
+  await expect(page.getByLabel('พื้นที่ฝึกพิมพ์')).toBeFocused();
+  await page.reload();
+  await expect(trigger).toHaveText('convention-commit');
+  await trigger.click();
+  await expect(page.getByRole('option', { selected: true })).toHaveAccessibleName('convention-commit');
+  await page.screenshot({ path: '.artifacts/set-picker-desktop.png', fullPage: true });
+  await search.fill('ไม่ตรงกับชื่อใด');
+  await expect(page.getByRole('status')).toHaveText('ไม่พบชุดข้อความ');
+  await expect(page.getByRole('option')).toHaveCount(0);
+  await search.press('Enter');
+  await expect(trigger).toHaveText('convention-commit');
+  await expect(search).toBeVisible();
+});
+
+test('picker keyboard navigation and dismissal leave the current typing draft intact', async ({ page }) => {
+  await mockPicker(page);
+  const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+  await input.pressSequentially('o');
+  const trigger = page.getByLabel('เลือกชุดข้อความ');
+  await trigger.focus();
+  await trigger.press('ArrowDown');
+  const search = page.getByRole('combobox', { name: 'ค้นหาชุดฝึก' });
+  await search.fill('request');
+  await search.press('Space');
+  await expect(search).toHaveValue('request ');
+  await expect(input).toHaveValue('o');
+  await search.press('Escape');
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveText('A quiet morning');
+  await expect(input).toHaveValue('o');
+  await trigger.click();
+  await page.locator('body').click({ position: { x: 5, y: 5 } });
+  await expect(search).toHaveCount(0);
+  await expect(input).toHaveValue('o');
+  await trigger.click();
+  await search.press('Tab');
+  await expect(search).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'เวลา', exact: true })).toBeFocused();
+  await trigger.focus();
+  await trigger.press('ArrowDown');
+  await search.press('ArrowDown');
+  await search.press('Enter');
+  await expect(trigger).toHaveText('วันสบาย ๆ');
+  await expect(input).toHaveValue('');
+  await expect(input).toBeFocused();
+});
+
+test('mobile picker wraps long names and scrolls keyboard choices into view', async ({ page }) => {
+  const longName = 'long-name-'.repeat(10);
+  const sets = Array.from({ length: 30 }, (_, index) => ({
+    id: `mobile-picker-${index}`, name: index === 29 ? longName : `Practice ${index + 1}`, kind: 'passage', content: 'one two', createdAt: '', updatedAt: '',
+  }));
+  await page.setViewportSize({ width: 320, height: 700 });
+  await page.route('**/api/sets', route => route.fulfill({ json: sets }));
+  await page.goto('/');
+  const trigger = page.getByLabel('เลือกชุดข้อความ');
+  await trigger.click();
+  const search = page.getByRole('combobox', { name: 'ค้นหาชุดฝึก' });
+  await search.press('ArrowUp');
+  await expect.poll(async () => page.getByRole('listbox').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  const menu = await page.locator('.set-picker-popover').boundingBox();
+  expect(menu).not.toBeNull();
+  expect(menu!.x).toBeGreaterThanOrEqual(0);
+  expect(menu!.x + menu!.width).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: '.artifacts/set-picker-mobile.png', fullPage: true });
+  await search.press('Enter');
+  await expect(trigger).toHaveText(longName);
+  await expect(page.getByLabel('พื้นที่ฝึกพิมพ์')).toBeFocused();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+for (const viewport of [{ width: 1440, height: 500 }, { width: 390, height: 480 }]) {
+  test(`changing practice settings preserves page scroll at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await mockPicker(page);
+    const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
+    await expect(input).toBeFocused();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    for (const name of ['15', 'จำนวนคำ', '10', 'ต้นฉบับ', 'เวลา', '60']) {
+      await page.getByRole('button', { name, exact: true }).click();
+      await expect(input).toBeFocused();
+      await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    }
+    await page.getByRole('button', { name: 'กำหนดเอง', exact: true }).click();
+    await expect(page.getByLabel('เวลา (1–3,600 วิ)')).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await page.getByLabel('เวลา (1–3,600 วิ)').fill('45');
+    await page.getByRole('button', { name: 'ใช้ค่านี้' }).click();
+    await expect(input).toBeFocused();
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await input.pressSequentially('o');
+    await expect(input).toHaveValue('o');
+  });
+}
+
+test('picker navigation scrolls its list without moving the page', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await page.route('**/api/sets', route => route.fulfill({ json: Array.from({ length: 30 }, (_, index) => ({
+    id: `scroll-picker-${index}`, name: `Practice ${index + 1}`, kind: 'passage', content: 'one two', createdAt: '', updatedAt: '',
+  })) }));
+  await page.goto('/');
+  await expect(page.getByLabel('พื้นที่ฝึกพิมพ์')).toBeFocused();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.getByLabel('เลือกชุดข้อความ').click();
+  const search = page.getByRole('combobox', { name: 'ค้นหาชุดฝึก' });
+  await expect(search).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await search.press('ArrowUp');
+  await expect.poll(async () => page.getByRole('listbox').evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await search.press('Enter');
+  await expect(page.getByLabel('พื้นที่ฝึกพิมพ์')).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+test('optional settings keep the page width stable when vertical overflow changes', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await mockPicker(page);
+  const before = await page.locator('.practice-settings').boundingBox();
+  expect(before).not.toBeNull();
+  expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+  expect(await page.evaluate(() => {
+    const style = getComputedStyle(document.documentElement);
+    return { overflowY: style.overflowY, gutter: style.scrollbarGutter };
+  })).toEqual({ overflowY: 'scroll', gutter: 'stable' });
+  await page.getByRole('button', { name: 'จำนวนคำ', exact: true }).click();
+  await page.getByRole('button', { name: 'กำหนดเอง', exact: true }).click();
+  expect(await page.evaluate(() => document.documentElement.scrollHeight > innerHeight)).toBe(true);
+  const after = await page.locator('.practice-settings').boundingBox();
+  expect(after).not.toBeNull();
+  expect(after!.x).toBe(before!.x);
+  expect(after!.width).toBe(before!.width);
+  expect(await page.evaluate(() => scrollY)).toBe(0);
+});
 
 test('named sets can be created, edited, selected, and deleted', async ({ page, request }) => {
   let id: string | undefined;
@@ -37,9 +207,9 @@ test('named sets can be created, edited, selected, and deleted', async ({ page, 
     await page.getByRole('button', { name: 'บันทึกชุด' }).click();
     const edited = page.getByRole('article').filter({ has: page.getByRole('heading', { name: `${unique}-edited`, exact: true }) });
     await edited.getByRole('button', { name: 'ฝึกชุดนี้' }).click();
-    await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue(id!);
+    await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveText(`${unique}-edited`);
     await page.reload();
-    await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue(id!);
+    await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveText(`${unique}-edited`);
     await page.getByRole('button', { name: 'ชุดข้อความ', exact: true }).click();
     await page.getByRole('button', { name: `ลบ ${unique}-edited` }).click();
     await page.getByRole('button', { name: 'ลบชุด', exact: true }).click();
@@ -49,7 +219,7 @@ test('named sets can be created, edited, selected, and deleted', async ({ page, 
 
 test('word mode scores corrections and supports restart', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await selectSet(page, `${unique}-passage`);
   await page.getByRole('button', { name: 'จำนวนคำ', exact: true }).click();
   await page.getByRole('button', { name: '10', exact: true }).click();
   await page.getByLabel('พื้นที่ฝึกพิมพ์').focus();
@@ -113,7 +283,7 @@ test('Spacebar advances from outside the input and can finish by skipping the la
 
 test('Spacebar does not advance during IME composition', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(thaiId);
+  await selectSet(page, `${unique}-thai`);
   const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
   await input.focus();
   await input.dispatchEvent('compositionstart');
@@ -129,7 +299,7 @@ test('Spacebar does not advance during IME composition', async ({ page }) => {
 test('timer starts on first input, extends the text and ends at selected time', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(wordsId);
+  await selectSet(page, `${unique}-words`);
   await page.getByRole('button', { name: 'เวลา', exact: true }).click();
   await page.getByRole('button', { name: 'กำหนดเอง', exact: true }).click();
   await page.getByLabel('เวลา (1–3,600 วิ)').fill('2');
@@ -146,7 +316,7 @@ test('timer starts on first input, extends the text and ends at selected time', 
 
 test('Thai combining marks and IME composition remain intact', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(thaiId);
+  await selectSet(page, `${unique}-thai`);
   await page.getByRole('button', { name: 'จำนวนคำ', exact: true }).click();
   await page.getByRole('button', { name: 'กำหนดเอง', exact: true }).click();
   await page.getByLabel('จำนวนคำ (1–1,000)').fill('4');
@@ -164,7 +334,7 @@ test('Thai combining marks and IME composition remain intact', async ({ page }) 
 
 test('long sessions scroll to the caret and prevent pasted input', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(wordsId);
+  await selectSet(page, `${unique}-words`);
   await page.getByRole('button', { name: 'จำนวนคำ', exact: true }).click();
   await page.getByRole('button', { name: '100', exact: true }).click();
   await page.getByLabel('พื้นที่ฝึกพิมพ์').focus();
@@ -183,7 +353,7 @@ test('long sessions scroll to the caret and prevent pasted input', async ({ page
 
 test('Enter resumes typing without a start gate or focus overlay', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await selectSet(page, `${unique}-passage`);
   await page.locator('body').click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('Enter');
   const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
@@ -201,7 +371,7 @@ test('Enter resumes typing without a start gate or focus overlay', async ({ page
 
 test('correct completed words resist Backspace, word deletion and mobile-style deletion', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await selectSet(page, `${unique}-passage`);
   await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
   await page.getByLabel('พื้นที่ฝึกพิมพ์').focus();
   const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
@@ -227,7 +397,7 @@ test('correct completed words resist Backspace, word deletion and mobile-style d
 
 test('incorrect completed words remain editable until corrected', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await selectSet(page, `${unique}-passage`);
   await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
   await page.getByLabel('พื้นที่ฝึกพิมพ์').focus();
   const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
@@ -243,7 +413,7 @@ test('incorrect completed words remain editable until corrected', async ({ page 
 test('original mode has no limits, preserves whitespace and completes only at the end', async ({ page }) => {
   await page.clock.install();
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(originalId);
+  await selectSet(page, `${unique}-original`);
   await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
   await expect(page.getByRole('button', { name: 'กำหนดเอง', exact: true })).toHaveCount(0);
   await expect(page.locator('.typing-text')).toHaveText('one  two\n\nthree\tfour.', { useInnerText: false });
@@ -267,9 +437,9 @@ test('original mode has no limits, preserves whitespace and completes only at th
 test('original mode is only available for passages and caret respects reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await selectSet(page, `${unique}-passage`);
   await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(wordsId);
+  await selectSet(page, `${unique}-words`);
   await expect(page.getByRole('button', { name: 'ต้นฉบับ', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'เวลา', exact: true })).toHaveClass(/active/);
   await page.getByLabel('พื้นที่ฝึกพิมพ์').focus();
@@ -281,7 +451,7 @@ test('typing starts immediately and continues after changing settings or losing 
   page.on('dialog', async (dialog) => { dialogs.push(dialog.message()); await dialog.dismiss(); });
   await page.goto('/');
   await expect(page.getByLabel('พื้นที่ฝึกพิมพ์')).toBeFocused();
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await selectSet(page, `${unique}-passage`);
   await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
   await page.keyboard.type('one ');
   const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
@@ -296,7 +466,7 @@ test('typing starts immediately and continues after changing settings or losing 
 
 test('Enter on results starts a new round ready for immediate typing', async ({ page }) => {
   await page.goto('/');
-  await page.getByLabel('เลือกชุดข้อความ').selectOption(passageId);
+  await selectSet(page, `${unique}-passage`);
   await page.getByRole('button', { name: 'ต้นฉบับ', exact: true }).click();
   const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
   await input.fill('one two three four five six seven eight nine ten');
@@ -330,7 +500,7 @@ test('next set starts fresh, persists the selection and wraps after the last set
   await expect(next).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await next.click();
-  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('next-second');
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveText('Second set');
   await expect(page.getByRole('button', { name: 'ต้นฉบับ', exact: true })).toHaveClass(/active/);
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('');
@@ -338,11 +508,11 @@ test('next set starts fresh, persists the selection and wraps after the last set
   await expect(page.locator('.practice-topline')).toContainText('0%');
   await expect(page.getByRole('region', { name: 'ผลการฝึก' })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('next-second');
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveText('Second set');
   await input.pressSequentially('beta');
   await expect(page.getByRole('heading', { name: 'Second set', exact: true })).toBeVisible();
   await next.click();
-  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('next-first');
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveText('First set');
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('');
   await expect(page.locator('.typing-text')).toHaveText('alpha');
@@ -359,7 +529,7 @@ test('next set adapts original mode for a word bank and waits for input to start
   const input = page.getByLabel('พื้นที่ฝึกพิมพ์');
   await input.fill('one');
   await page.getByRole('button', { name: 'ชุดต่อไป', exact: true }).click();
-  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('next-bank');
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveText('Word bank');
   await expect(page.getByRole('button', { name: 'ต้นฉบับ', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'เวลา', exact: true })).toHaveClass(/active/);
   await expect(page.getByRole('button', { name: '30', exact: true })).toHaveClass(/active/);
@@ -386,7 +556,7 @@ test('a single saved set disables next set and remains available for another rou
   await page.getByRole('button', { name: 'ฝึกอีกครั้ง' }).click();
   await expect(input).toBeFocused();
   await expect(input).toHaveValue('');
-  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveValue('only-set');
+  await expect(page.getByLabel('เลือกชุดข้อความ')).toHaveText('Only set');
 });
 
 test('long original passages stay compact and keep the actual animated caret visible', async ({ page }) => {

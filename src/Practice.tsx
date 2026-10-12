@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { RotateCcw, Clock3, Hash, BookOpen, ArrowRight } from 'lucide-react';
 import type { Settings, TextSet } from '../shared/types';
 import { useTyping } from './useTyping';
@@ -9,6 +9,7 @@ interface Props { set: TextSet; settings: Settings; onRestart: () => void; onNex
 export default function Practice({ set, settings, onRestart, onNext }: Props) {
   const typing = useTyping(set, settings);
   const input = useRef<HTMLTextAreaElement>(null);
+  const restart = useRef<HTMLButtonElement>(null);
   const composing = useRef(false);
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
@@ -17,8 +18,12 @@ export default function Practice({ set, settings, onRestart, onNext }: Props) {
   const nextWord = () => { setDraft(typing.nextWord()); };
   actions.current = { status: typing.status, draft, accept, nextWord, onRestart };
 
+  useLayoutEffect(() => {
+    if (typing.status === 'ready') input.current?.focus({ preventScroll: true });
+    else if (typing.status === 'done') restart.current?.focus({ preventScroll: true });
+  }, [typing.status]);
+
   useEffect(() => {
-    if (document.activeElement === document.body) input.current?.focus();
     const typeFromPage = (event: KeyboardEvent) => {
       if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
       const element = event.target;
@@ -30,9 +35,9 @@ export default function Practice({ set, settings, onRestart, onNext }: Props) {
         }
       } else if (event.key === 'Enter') {
         if (element instanceof Element && element.closest('button, a')) return;
-        event.preventDefault(); input.current?.focus();
+        event.preventDefault(); input.current?.focus({ preventScroll: true });
       } else if (event.key.length === 1 && !(element instanceof Element && element.closest('a'))) {
-        event.preventDefault(); input.current?.focus();
+        event.preventDefault(); input.current?.focus({ preventScroll: true });
         if (event.key === ' ') actions.current.nextWord();
         else actions.current.accept(actions.current.draft + event.key);
       }
@@ -58,7 +63,7 @@ export default function Practice({ set, settings, onRestart, onNext }: Props) {
       </div>
       <div className="result-detail"><span>ถูก {result.correct} · คงเหลือผิด {result.incorrect}</span><span>พิมพ์ผิด {result.mistakes} ครั้ง · raw {result.raw} WPM</span></div>
       <div className="result-actions">
-        <button autoFocus className="button-primary" onClick={onRestart} onKeyDown={(event) => { if (event.key === 'Enter' && event.repeat) event.preventDefault(); }}><RotateCcw size={16} /> ฝึกอีกครั้ง <kbd>enter</kbd></button>
+        <button ref={restart} className="button-primary" onClick={onRestart} onKeyDown={(event) => { if (event.key === 'Enter' && event.repeat) event.preventDefault(); }}><RotateCcw size={16} /> ฝึกอีกครั้ง <kbd>enter</kbd></button>
         <button className="button-secondary" onClick={onNext} disabled={!onNext} title={!onNext ? 'เพิ่มชุดข้อความอีกชุดเพื่อฝึกชุดต่อไป' : undefined}>ชุดต่อไป <ArrowRight size={16} /></button>
       </div>
     </section>;
@@ -70,11 +75,11 @@ export default function Practice({ set, settings, onRestart, onNext }: Props) {
       <span className="flex items-center gap-5"><span>{typing.live.wpm} <span className="text-muted">WPM</span></span><span>{typing.live.accuracy}<span className="text-muted">%</span></span></span>
     </div>
     <div className="progress-track"><div style={{ transform: `scaleX(${Math.min(1, Math.max(0, progress))})` }} /></div>
-    <div className="typing-area" onClick={() => input.current?.focus()}>
+    <div className="typing-area" onClick={() => input.current?.focus({ preventScroll: true })}>
       <TypingText expected={typing.expected} entered={typing.entered} cursor={typing.cursor} lockedCursor={typing.lockedCursor} focused={focused} />
       <textarea
         ref={input} className="typing-input" aria-label="พื้นที่ฝึกพิมพ์" value={draft}
-        autoFocus wrap="off" autoCapitalize="off" autoCorrect="off" spellCheck={false}
+        wrap="off" autoCapitalize="off" autoCorrect="off" spellCheck={false}
         onFocus={() => { setFocused(true); input.current?.setSelectionRange(draft.length, draft.length); }}
         onBlur={() => setFocused(false)}
         onChange={(event) => {
